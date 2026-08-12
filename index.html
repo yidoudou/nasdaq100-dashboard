@@ -181,11 +181,11 @@
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
     <h3>编辑数据</h3>
-    <p class="hint">PE、历史分位、参考跌幅等需手动更新（可从理杏仁/韭圈儿等App查阅后填写）。指数点位默认自动获取，填了"手动覆盖"才会用你填的值。</p>
+    <p class="hint">指数点位、涨跌幅、PE-TTM由GitHub Actions自动抓取。历史分位、参考跌幅等没有免费接口，需手动更新（可从理杏仁/韭圈儿等App查阅后填写）。下面几项留空则自动用抓取值，填了就用你填的值。</p>
 
     <div class="field">
-      <label>最新PE-TTM</label>
-      <input type="number" step="0.01" id="in_peTTM" placeholder="例如 33.74">
+      <label>最新PE-TTM（留空=自动使用抓取值）</label>
+      <input type="number" step="0.01" id="in_peTTM" placeholder="留空 = 自动获取">
     </div>
     <div class="field">
       <label>远期市盈率</label>
@@ -206,8 +206,8 @@
     </div>
 
     <div class="field">
-      <label>近期高点（用于自动计算当前大跌幅度）</label>
-      <input type="number" step="0.01" id="in_recentHigh" placeholder="例如 30800">
+      <label>近期高点（留空=自动使用系统追踪的近期高点，用于计算当前大跌幅度）</label>
+      <input type="number" step="0.01" id="in_recentHigh" placeholder="留空 = 自动追踪">
     </div>
 
     <div class="field">
@@ -246,7 +246,9 @@ function loadData(){
     p1y: null, p5y: null, p10y: null,
     recentHigh: null, lastDrawdown: null, lastDrawdownPeriod: '',
     manualIndex: null, author: 'Roy',
-    lastIndex: null, lastChangePct: null, lastFetchTime: null
+    // 以下字段由 data.json（GitHub Actions 自动抓取）填充
+    lastIndex: null, lastChangePct: null, lastFetchTime: null,
+    autoPeTTM: null, autoPeTTMDate: null, autoRecentHigh: null
   };
   if(!raw) return defaults;
   try{ return Object.assign(defaults, JSON.parse(raw)); }catch(e){ return defaults; }
@@ -266,7 +268,9 @@ function fmtPct(n, digits=2){
 }
 
 function render(){
-  document.getElementById('peTTM').textContent = fmt(data.peTTM);
+  // PE-TTM：手动填了就用手动值，否则用自动抓取值
+  const peVal = data.peTTM!=null ? data.peTTM : data.autoPeTTM;
+  document.getElementById('peTTM').textContent = fmt(peVal);
   document.getElementById('peSub').innerHTML =
     `远期市盈率：${fmt(data.peForward)}<br>远期PE处于过去10年的 ${data.peForwardPct!=null?data.peForwardPct+'%':'--'}`;
 
@@ -289,10 +293,12 @@ function render(){
   document.getElementById('p10y').textContent = data.p10y!=null ? data.p10y+'%' : '--%';
 
   // 当前大跌幅度 = (当前指数 - 近期高点) / 近期高点
+  // 近期高点：手动填了就用手动值，否则用系统自动追踪的近期高点
+  const highVal = data.recentHigh!=null ? data.recentHigh : data.autoRecentHigh;
   let drawdownEl = document.getElementById('drawdown');
   let drawdownTag = document.getElementById('drawdownTag');
-  if(idxVal!=null && data.recentHigh){
-    const dd = (idxVal - data.recentHigh) / data.recentHigh * 100;
+  if(idxVal!=null && highVal){
+    const dd = (idxVal - highVal) / highVal * 100;
     drawdownEl.textContent = fmtPct(dd);
     if(dd > -3){ drawdownTag.textContent='震荡中'; }
     else if(dd > -10){ drawdownTag.textContent='回调中'; }
@@ -308,59 +314,38 @@ function render(){
   document.getElementById('authorName').textContent = data.author || '--';
 }
 
-// ---- 行情获取：Yahoo Finance chart API，依次尝试多个CORS代理，提高成功率 ----
-const YAHOO_TARGET = 'https://query1.finance.yahoo.com/v8/finance/chart/%5ENDX?interval=1d&range=5d';
-const PROXIES = [
-  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-  (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
-];
-
-async function fetchWithTimeout(url, ms){
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), ms);
-  try{
-    const res = await fetch(url, {cache:'no-store', signal:controller.signal});
-    return res;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
+// ---- 行情获取：读取同目录下的 data.json ----
+// data.json 由 GitHub Actions 定时任务在服务端抓取 Yahoo Finance / GuruFocus 后自动生成并提交，
+// 页面这里只是同源读取一个静态文件，不需要CORS代理，也不会被file://限制影响。
 async function fetchIndexQuote(){
   const statusEl = document.getElementById('statusMsg');
-  statusEl.textContent = '正在获取最新指数...';
+  statusEl.textContent = '正在读取最新数据...';
+  try{
+    const res = await fetch(`./data.json?t=${Date.now()}`, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
 
-  let lastErr = null;
-  for(let i=0; i<PROXIES.length; i++){
-    const proxyUrl = PROXIES[i](YAHOO_TARGET);
-    try{
-      statusEl.textContent = `正在获取最新指数...(代理 ${i+1}/${PROXIES.length})`;
-      const res = await fetchWithTimeout(proxyUrl, 8000);
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      const json = await res.json();
-      const result = json.chart && json.chart.result && json.chart.result[0];
-      if(!result) throw new Error('数据格式异常');
-      const meta = result.meta;
-      const price = meta.regularMarketPrice;
-      const prevClose = meta.chartPreviousClose || meta.previousClose;
-      const changePct = ((price - prevClose)/prevClose)*100;
-      data.lastIndex = price;
-      data.lastChangePct = changePct;
-      data.lastFetchTime = new Date().toLocaleString('zh-CN', {hour12:false});
-      saveData(data);
-      render();
-      statusEl.textContent = '已更新（数据来自Yahoo Finance ^NDX）';
-      return;
-    }catch(err){
-      lastErr = err;
-      // 继续尝试下一个代理
-    }
+    if(json.index!=null) data.lastIndex = json.index;
+    if(json.changePct!=null) data.lastChangePct = json.changePct;
+    if(json.autoPeTTM!=null) data.autoPeTTM = json.autoPeTTM;
+    if(json.autoRecentHigh!=null) data.autoRecentHigh = json.autoRecentHigh;
+    data.lastFetchTime = json.lastFetchTime || new Date().toLocaleString('zh-CN', {hour12:false});
+
+    saveData(data);
+    render();
+    statusEl.textContent = json.lastFetchOk===false
+      ? '已读取（上次自动抓取部分失败，显示的是最后一次成功的数据）'
+      : '已更新（数据来自GitHub Actions定时抓取）';
+  }catch(err){
+    statusEl.textContent = '读取 data.json 失败，可能还没生成或路径不对，可在编辑面板手动填写（' + (err.message||err.name) + '）';
   }
-  statusEl.textContent = '自动获取失败（已尝试' + PROXIES.length + '个代理），可在编辑面板手动填写指数点位。' +
-    (lastErr ? '最后错误：' + (lastErr.message || lastErr.name) : '');
 }
+
+// 打开页面自动刷新一次；停留期间每10分钟自动再刷新一次；从后台切回前台时也刷新一次
+setInterval(fetchIndexQuote, 10 * 60 * 1000);
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible') fetchIndexQuote();
+});
 
 // ---- 编辑面板 ----
 const overlay = document.getElementById('modalOverlay');
