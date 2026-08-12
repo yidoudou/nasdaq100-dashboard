@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="纳指温度计">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#fdf3e7">
+<title>纳斯达克100指数温度</title>
+<style>
+  :root{
+    --bg:#fdf3e7;
+    --pink:#fdeef1; --pink-strong:#f2467a;
+    --blue:#eaf3fb; --blue-strong:#2e78d6;
+    --purple:#f2edfb; --purple-strong:#8b5cf6;
+    --green:#eaf7ee; --green-strong:#2fa860;
+    --orange:#fdf1e6; --orange-strong:#e8863a;
+    --yellow:#fff8e3; --yellow-strong:#e0a521;
+    --text:#2b2b2b; --sub:#8a8a8a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:0; background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif;
+    color:var(--text);
+    display:flex; justify-content:center;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .page{
+    width:100%; max-width:480px; padding:20px 16px 100px;
+  }
+  .card{
+    background:#fffdf9; border-radius:22px; padding:22px 20px;
+    box-shadow:0 4px 18px rgba(0,0,0,0.06);
+  }
+  .title-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;}
+  .title{font-size:22px; font-weight:800;}
+  .title span{color:var(--pink-strong);}
+  .refresh-btn{
+    border:none; background:var(--purple); color:var(--purple-strong);
+    font-size:13px; font-weight:600; padding:8px 12px; border-radius:20px;
+  }
+  .divider{border:none; border-top:2px dashed #f0e2d0; margin:14px 0;}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;}
+  .stat{border-radius:18px; padding:16px 14px;}
+  .stat.pink{background:var(--pink);}
+  .stat.blue{background:var(--blue);}
+  .stat-label{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:#555; margin-bottom:6px;}
+  .stat-big{font-size:30px; font-weight:800;}
+  .stat.pink .stat-big{color:var(--pink-strong);}
+  .stat.blue .stat-big{color:var(--blue-strong);}
+  .stat-sub{font-size:12px; color:var(--sub); margin-top:6px; line-height:1.5;}
+  .pill{display:inline-block; margin-top:8px; padding:4px 10px; border-radius:10px; font-size:13px; font-weight:700;}
+  .pill.up{background:#fdeaea; color:#d84343;}
+  .pill.down{background:#e6f6ec; color:#2fa860;}
+
+  .update-bar{
+    display:flex; align-items:center; gap:8px; background:#fbf4e7; border-radius:14px;
+    padding:12px 14px; font-size:13px; font-weight:600; color:#8a6a2f; margin-bottom:14px;
+  }
+  .update-bar b{color:#c98a1a; font-weight:800;}
+
+  .percentile-card{background:var(--purple); border-radius:18px; padding:16px 14px; margin-bottom:14px;}
+  .percentile-title{display:flex; align-items:center; gap:6px; font-size:14px; font-weight:800; color:#5b3fae; margin-bottom:12px;}
+  .percentile-row{display:grid; grid-template-columns:1fr 1fr 1fr; text-align:center;}
+  .percentile-row div{border-right:1px solid #e2d8f7;}
+  .percentile-row div:last-child{border-right:none;}
+  .p-label{font-size:12px; color:#7a6ea8; margin-bottom:4px;}
+  .p-val{font-size:24px; font-weight:800; color:var(--purple-strong);}
+  .p-sub{font-size:11px; color:#9a8fc2; margin-top:2px;}
+
+  .stat.green{background:var(--green);}
+  .stat.orange{background:var(--orange);}
+  .stat.green .stat-big{color:var(--green-strong);}
+  .stat.orange .stat-big{color:var(--orange-strong);}
+  .tag{display:inline-block; margin-top:8px; padding:4px 10px; border-radius:10px; font-size:12px; font-weight:700; background:#dff3e5; color:#2fa860;}
+
+  .tip-card{background:var(--yellow); border-radius:16px; padding:14px; font-size:13px; line-height:1.6; margin-bottom:16px;}
+  .tip-card b{color:var(--yellow-strong);}
+
+  .footer-row{display:flex; align-items:center; justify-content:space-between; font-size:12px; color:var(--sub);}
+  .footer-row b{color:#333;}
+  .disclaimer{color:#d84343; font-weight:700;}
+
+  .fab{
+    position:fixed; right:20px; bottom:24px; width:52px; height:52px; border-radius:50%;
+    background:var(--pink-strong); color:#fff; border:none; font-size:22px;
+    box-shadow:0 6px 16px rgba(242,70,122,0.4); z-index:20;
+  }
+
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.4); display:none;
+    align-items:flex-end; justify-content:center; z-index:30;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal{
+    background:#fff; width:100%; max-width:480px; border-radius:20px 20px 0 0;
+    padding:18px 18px 28px; max-height:85vh; overflow-y:auto;
+  }
+  .modal h3{margin:0 0 4px; font-size:17px;}
+  .modal p.hint{font-size:12px; color:var(--sub); margin:0 0 14px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12px; color:#666; margin-bottom:4px; font-weight:600;}
+  .field input{
+    width:100%; padding:10px 12px; border:1px solid #e6e0d5; border-radius:10px; font-size:15px;
+    background:#faf8f4;
+  }
+  .field-row{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  .modal-actions{display:flex; gap:10px; margin-top:16px;}
+  .modal-actions button{
+    flex:1; padding:12px; border-radius:12px; border:none; font-size:15px; font-weight:700;
+  }
+  .btn-cancel{background:#f1efe9; color:#555;}
+  .btn-save{background:var(--pink-strong); color:#fff;}
+  .status-msg{font-size:12px; color:var(--sub); text-align:center; margin-top:10px;}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <div class="title-row">
+      <div class="title">纳斯达克<span>100</span>指数温度 🌡️</div>
+      <button class="refresh-btn" id="refreshBtn">刷新</button>
+    </div>
+
+    <div class="grid2">
+      <div class="stat pink">
+        <div class="stat-label">📈 最新PE</div>
+        <div class="stat-big" id="peTTM">--</div>
+        <div class="stat-sub" id="peSub">远期市盈率：--<br>远期PE处于过去10年的 --%</div>
+      </div>
+      <div class="stat blue">
+        <div class="stat-label">📊 目前指数</div>
+        <div class="stat-big" id="indexVal">--</div>
+        <div id="changePillWrap"><span class="pill" id="changePill">--</span></div>
+      </div>
+    </div>
+
+    <div class="update-bar">🗓️ 更新时间：<b id="updateTime">--</b></div>
+
+    <div class="percentile-card">
+      <div class="percentile-title">📐 PE-TTM历史分位值对比</div>
+      <div class="percentile-row">
+        <div><div class="p-label">过去1年</div><div class="p-val" id="p1y">--%</div><div class="p-sub">位置</div></div>
+        <div><div class="p-label">过去5年</div><div class="p-val" id="p5y">--%</div><div class="p-sub">位置</div></div>
+        <div><div class="p-label">过去10年</div><div class="p-val" id="p10y">--%</div><div class="p-sub">位置</div></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="stat green">
+        <div class="stat-label">📉 当前大跌幅度</div>
+        <div class="stat-big" id="drawdown">--</div>
+        <div class="tag" id="drawdownTag">--</div>
+      </div>
+      <div class="stat orange">
+        <div class="stat-label">🔄 参考上轮大跌幅度</div>
+        <div class="stat-big" id="lastDrawdown">--</div>
+        <div class="stat-sub" id="lastDrawdownPeriod">--</div>
+      </div>
+    </div>
+
+    <div class="tip-card">
+      💡 估值是否合理请参考：<b>历史分位值水平、恐慌指数</b>（自行补充判断）
+    </div>
+
+    <div class="footer-row">
+      <div>整理by：<b id="authorName">--</b></div>
+      <div class="disclaimer">内容仅为个人记录分享，不构成投资建议</div>
+    </div>
+  </div>
+
+  <div class="status-msg" id="statusMsg"></div>
+</div>
+
+<button class="fab" id="editFab">✎</button>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3>编辑数据</h3>
+    <p class="hint">PE、历史分位、参考跌幅等需手动更新（可从理杏仁/韭圈儿等App查阅后填写）。指数点位默认自动获取，填了"手动覆盖"才会用你填的值。</p>
+
+    <div class="field">
+      <label>最新PE-TTM</label>
+      <input type="number" step="0.01" id="in_peTTM" placeholder="例如 33.74">
+    </div>
+    <div class="field">
+      <label>远期市盈率</label>
+      <input type="number" step="0.01" id="in_peForward" placeholder="例如 21.54">
+    </div>
+    <div class="field">
+      <label>远期PE处于过去10年分位（%）</label>
+      <input type="number" step="0.1" id="in_peForwardPct" placeholder="例如 39.2">
+    </div>
+
+    <div class="field">
+      <label>PE-TTM 历史分位（1年 / 5年 / 10年，%）</label>
+      <div class="field-row">
+        <input type="number" step="0.1" id="in_p1y" placeholder="1年">
+        <input type="number" step="0.1" id="in_p5y" placeholder="5年">
+        <input type="number" step="0.1" id="in_p10y" placeholder="10年">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>近期高点（用于自动计算当前大跌幅度）</label>
+      <input type="number" step="0.01" id="in_recentHigh" placeholder="例如 30800">
+    </div>
+
+    <div class="field">
+      <label>参考上轮大跌幅度（%，填负数）</label>
+      <input type="number" step="0.01" id="in_lastDrawdown" placeholder="例如 -12.70">
+    </div>
+    <div class="field">
+      <label>参考上轮大跌区间</label>
+      <input type="text" id="in_lastDrawdownPeriod" placeholder="例如 26.1 - 26.3">
+    </div>
+
+    <div class="field">
+      <label>手动覆盖指数点位（留空则用自动获取值）</label>
+      <input type="number" step="0.01" id="in_manualIndex" placeholder="留空 = 自动获取">
+    </div>
+
+    <div class="field">
+      <label>整理by</label>
+      <input type="text" id="in_author" placeholder="你的名字">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" id="cancelBtn">取消</button>
+      <button class="btn-save" id="saveBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'nasdaq100_card_v1';
+
+function loadData(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  const defaults = {
+    peTTM: null, peForward: null, peForwardPct: null,
+    p1y: null, p5y: null, p10y: null,
+    recentHigh: null, lastDrawdown: null, lastDrawdownPeriod: '',
+    manualIndex: null, author: 'Roy',
+    lastIndex: null, lastChangePct: null, lastFetchTime: null
+  };
+  if(!raw) return defaults;
+  try{ return Object.assign(defaults, JSON.parse(raw)); }catch(e){ return defaults; }
+}
+function saveData(d){ localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); }
+
+let data = loadData();
+
+function fmt(n, digits=2){
+  if(n===null || n===undefined || isNaN(n)) return '--';
+  return Number(n).toFixed(digits);
+}
+function fmtPct(n, digits=2){
+  if(n===null || n===undefined || isNaN(n)) return '--';
+  const v = Number(n);
+  return (v>0?'+':'') + v.toFixed(digits) + '%';
+}
+
+function render(){
+  document.getElementById('peTTM').textContent = fmt(data.peTTM);
+  document.getElementById('peSub').innerHTML =
+    `远期市盈率：${fmt(data.peForward)}<br>远期PE处于过去10年的 ${data.peForwardPct!=null?data.peForwardPct+'%':'--'}`;
+
+  const idxVal = data.manualIndex!=null ? data.manualIndex : data.lastIndex;
+  document.getElementById('indexVal').textContent = idxVal!=null ? Math.round(idxVal).toLocaleString() : '--';
+
+  const chg = data.lastChangePct;
+  const pill = document.getElementById('changePill');
+  if(chg!=null){
+    pill.textContent = fmtPct(chg);
+    pill.className = 'pill ' + (chg>=0 ? 'up':'down');
+  } else {
+    pill.textContent = '--'; pill.className = 'pill';
+  }
+
+  document.getElementById('updateTime').textContent = data.lastFetchTime || '尚未获取';
+
+  document.getElementById('p1y').textContent = data.p1y!=null ? data.p1y+'%' : '--%';
+  document.getElementById('p5y').textContent = data.p5y!=null ? data.p5y+'%' : '--%';
+  document.getElementById('p10y').textContent = data.p10y!=null ? data.p10y+'%' : '--%';
+
+  // 当前大跌幅度 = (当前指数 - 近期高点) / 近期高点
+  let drawdownEl = document.getElementById('drawdown');
+  let drawdownTag = document.getElementById('drawdownTag');
+  if(idxVal!=null && data.recentHigh){
+    const dd = (idxVal - data.recentHigh) / data.recentHigh * 100;
+    drawdownEl.textContent = fmtPct(dd);
+    if(dd > -3){ drawdownTag.textContent='震荡中'; }
+    else if(dd > -10){ drawdownTag.textContent='回调中'; }
+    else { drawdownTag.textContent='大幅回撤'; }
+  } else {
+    drawdownEl.textContent = '--';
+    drawdownTag.textContent = '需填近期高点';
+  }
+
+  document.getElementById('lastDrawdown').textContent = data.lastDrawdown!=null ? fmtPct(data.lastDrawdown) : '--';
+  document.getElementById('lastDrawdownPeriod').textContent = data.lastDrawdownPeriod || '--';
+
+  document.getElementById('authorName').textContent = data.author || '--';
+}
+
+// ---- 行情获取：Yahoo Finance chart API，依次尝试多个CORS代理，提高成功率 ----
+const YAHOO_TARGET = 'https://query1.finance.yahoo.com/v8/finance/chart/%5ENDX?interval=1d&range=5d';
+const PROXIES = [
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
+];
+
+async function fetchWithTimeout(url, ms){
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), ms);
+  try{
+    const res = await fetch(url, {cache:'no-store', signal:controller.signal});
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchIndexQuote(){
+  const statusEl = document.getElementById('statusMsg');
+  statusEl.textContent = '正在获取最新指数...';
+
+  let lastErr = null;
+  for(let i=0; i<PROXIES.length; i++){
+    const proxyUrl = PROXIES[i](YAHOO_TARGET);
+    try{
+      statusEl.textContent = `正在获取最新指数...(代理 ${i+1}/${PROXIES.length})`;
+      const res = await fetchWithTimeout(proxyUrl, 8000);
+      if(!res.ok) throw new Error('HTTP ' + res.status);
+      const json = await res.json();
+      const result = json.chart && json.chart.result && json.chart.result[0];
+      if(!result) throw new Error('数据格式异常');
+      const meta = result.meta;
+      const price = meta.regularMarketPrice;
+      const prevClose = meta.chartPreviousClose || meta.previousClose;
+      const changePct = ((price - prevClose)/prevClose)*100;
+      data.lastIndex = price;
+      data.lastChangePct = changePct;
+      data.lastFetchTime = new Date().toLocaleString('zh-CN', {hour12:false});
+      saveData(data);
+      render();
+      statusEl.textContent = '已更新（数据来自Yahoo Finance ^NDX）';
+      return;
+    }catch(err){
+      lastErr = err;
+      // 继续尝试下一个代理
+    }
+  }
+  statusEl.textContent = '自动获取失败（已尝试' + PROXIES.length + '个代理），可在编辑面板手动填写指数点位。' +
+    (lastErr ? '最后错误：' + (lastErr.message || lastErr.name) : '');
+}
+
+// ---- 编辑面板 ----
+const overlay = document.getElementById('modalOverlay');
+function openModal(){
+  document.getElementById('in_peTTM').value = data.peTTM ?? '';
+  document.getElementById('in_peForward').value = data.peForward ?? '';
+  document.getElementById('in_peForwardPct').value = data.peForwardPct ?? '';
+  document.getElementById('in_p1y').value = data.p1y ?? '';
+  document.getElementById('in_p5y').value = data.p5y ?? '';
+  document.getElementById('in_p10y').value = data.p10y ?? '';
+  document.getElementById('in_recentHigh').value = data.recentHigh ?? '';
+  document.getElementById('in_lastDrawdown').value = data.lastDrawdown ?? '';
+  document.getElementById('in_lastDrawdownPeriod').value = data.lastDrawdownPeriod ?? '';
+  document.getElementById('in_manualIndex').value = data.manualIndex ?? '';
+  document.getElementById('in_author').value = data.author ?? '';
+  overlay.classList.add('open');
+}
+function closeModal(){ overlay.classList.remove('open'); }
+
+function num(id){
+  const v = document.getElementById(id).value;
+  return v === '' ? null : parseFloat(v);
+}
+
+document.getElementById('editFab').addEventListener('click', openModal);
+document.getElementById('cancelBtn').addEventListener('click', closeModal);
+document.getElementById('refreshBtn').addEventListener('click', fetchIndexQuote);
+overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+document.getElementById('saveBtn').addEventListener('click', ()=>{
+  data.peTTM = num('in_peTTM');
+  data.peForward = num('in_peForward');
+  data.peForwardPct = num('in_peForwardPct');
+  data.p1y = num('in_p1y');
+  data.p5y = num('in_p5y');
+  data.p10y = num('in_p10y');
+  data.recentHigh = num('in_recentHigh');
+  data.lastDrawdown = num('in_lastDrawdown');
+  data.lastDrawdownPeriod = document.getElementById('in_lastDrawdownPeriod').value;
+  data.manualIndex = num('in_manualIndex');
+  data.author = document.getElementById('in_author').value || 'Roy';
+  saveData(data);
+  render();
+  closeModal();
+});
+
+render();
+fetchIndexQuote();
+</script>
+</body>
+</html>
